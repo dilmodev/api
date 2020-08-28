@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const {
   AuthenticationError,
   ForbiddenError
@@ -9,26 +10,97 @@ require('dotenv').config();
 const gravatar = require('../util/gravatar');
 
 const Mutation = {
-  newNote: async (parent, { content }, { models }) => {
+  newNote: async (parent, { content }, { models, user }) => {
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to create a note');
+    }
     return await models.Note.create({
       content,
-      author: 'Dillon Morris'
+      // reference to the author's mongo id
+      author: mongoose.Types.ObjectId(user.id)
     });
   },
-  deleteNote: async (parent, { id }, { models }) => {
+  deleteNote: async (parent, { id }, { models, user }) => {
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to delete a note');
+    }
+    const note = models.Note.findById(id);
+    // if the note owner and current user don't match, throw a forbidden error
+    if (note && String(note.author) !== user.id) {
+      throw new ForbiddenError("You don't have permissions to delete the note");
+    }
+
     try {
-      await models.Note.findOneAndRemove({ _id: id });
+      // if everything checks out, remove the note
+      await note.remove();
       return true;
     } catch {
+      // if there's an error along the way, return false
       return false;
     }
   },
-  updateNote: async (parent, { id, content }, { models }) => {
+  updateNote: async (parent, { id, content }, { models, user }) => {
+    if (!user) {
+      throw new AuthenticationError('You must be signed in to delete a note');
+    }
+
+    const note = models.Note.findById(id);
+
+    if (note && String(note.author) !== user.id) {
+      throw new ForbiddenError("You don't have permissions to update the note");
+    }
+
     return await models.Note.findOneAndUpdate(
       { _id: id },
       { $set: { content } },
       { new: true }
     );
+  },
+  toggleFavorite: async (parent, { id }, { models, user }) => {
+    if (!user) {
+      throw new AuthenticationError();
+    }
+
+    // check to see if the user has already favorited the note
+    let note = await models.Note.findById(id);
+    const hasUser = note.favoritedBy.indexOf(user.id);
+
+    // if the user exists in the list
+    // pull them from the list and reduce the favoriteCount by 1
+    if (hasUser >= 0) {
+      return await models.Note.findByIdAndUpdate(
+        id,
+        {
+          $pull: {
+            favoritedBy: mongoose.Types.ObjectId(user.id)
+          },
+          $inc: {
+            favoriteCount: -1
+          }
+        },
+        {
+          // Set new to true to return the updated doc
+          new: true
+        }
+      );
+    } else {
+      // if the user doesn't exist in the list
+      // add them to the list and increment favoriteCount by 1
+      return await models.Note.findByIdAndUpdate(
+        id,
+        {
+          $push: {
+            favoritedBy: mongoose.Types.ObjectId(user.id)
+          },
+          $inc: {
+            favoriteCount: 1
+          }
+        },
+        {
+          new: true
+        }
+      );
+    }
   },
   signUp: async (parent, { username, email, password }, { models }) => {
     // normalize the email address
@@ -74,7 +146,7 @@ const Mutation = {
     // if that comes back false (password is not what we have stored)
     // then throw an error
     if (!valid) {
-      throw new AuthenticationError('Error signing in');
+      throw new AuthenticationError('Password incorrect');
     }
 
     // if we've gotten to this point, we know that we have
