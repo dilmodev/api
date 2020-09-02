@@ -8,6 +8,7 @@ const typeDefs = gql`
     notes: [Note!]!
     note(id: ID!): Note!
     user(username: String!): User
+    noteFeed(cursor: String): NoteFeed
     users: [User!]!
     me: User!
   }
@@ -38,6 +39,12 @@ const typeDefs = gql`
     avatar: String
     notes: [Note!]!
     favorites: [Note!]!
+  }
+
+  type NoteFeed {
+    notes: [Note]!
+    cursor: String!
+    hasNextPage: Boolean!
   }
 `;
 

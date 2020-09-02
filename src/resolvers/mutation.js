@@ -9,7 +9,7 @@ require('dotenv').config();
 
 const gravatar = require('../util/gravatar');
 
-const Mutation = {
+module.exports = {
   newNote: async (parent, { content }, { models, user }) => {
     if (!user) {
       throw new AuthenticationError('You must be signed in to create a note');
@@ -156,5 +156,3 @@ const Mutation = {
     return jwt.sign({ id: user._id }, process.env.JWT_SECRET);
   }
 };
-
-module.exports = Mutation;
